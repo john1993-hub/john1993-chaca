@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>安得烈膳糧食物箱：愛心裝箱任務 (多人互動版)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Tone.js for Sound Effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- QRCode.js for Client-side QR Code Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+            background-image: 
+                radial-gradient(circle at 100% 150%, #fef3c7 24%, transparent 24%, transparent 28%, #fef3c7 28%, #fef3c7 36%, transparent 36%, transparent 40%, transparent),
+                radial-gradient(circle at 0 150%, #fef3c7 24%, transparent 24%, transparent 28%, #fef3c7 28%, #fef3c7 36%, transparent 36%, transparent 40%, transparent);
+            background-size: 100% 100%;
+            background-attachment: fixed;
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .door-frame {
+            perspective: 1200px;
+            transform-style: preserve-3d;
+        }
+
+        .door-panel {
+            transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .door-left { transform-origin: left; }
+        .door-right { transform-origin: right; }
+
+        .door-left.open { transform: rotateY(-110deg); }
+        .door-right.open { transform: rotateY(110deg); }
+
+        /* Logistics Roll-up Door */
+        .logistics-door {
+            transform-origin: top;
+            transition: transform 2.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .logistics-door.open { transform: scaleY(0); }
+
+        /* Error Shake Animation */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+        .shake { animation: shake 0.5s; border-color: #ef4444 !important; }
+
+        /* Delivery Truck Drive Animation */
+        @keyframes drive {
+            0% { transform: translateX(-120%); opacity: 0; }
+            20% { opacity: 1; }
+            50% { transform: translateX(0%); opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translateX(120%); opacity: 0; }
+        }
+        .truck-drive {
+            animation: drive 5s ease-in-out infinite;
+        }
+
+        /* Screen Flow Handling */
+        .screen { display: none; opacity: 0; transition: opacity 0.3s ease; }
+        .screen.active { display: flex; opacity: 1; }
+        
+        /* Interactive Buttons */
+        .btn-interactive {
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .btn-interactive:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-interactive:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        /* Conveyor Item Slide Animation */
+        @keyframes itemPopIn {
+            0% { transform: scale(0.6) translateY(20px); opacity: 0; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .item-conveyor-card {
+            animation: itemPopIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Leaderboard Item Entrance Animation */
+        .leaderboard-item {
+            animation: slideIn 0.4s ease forwards;
+            opacity: 0;
+            transform: translateY(15px);
+        }
+        @keyframes slideIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-0 md:p-4">
+
+    <main class="w-full h-screen md:h-auto md:min-h-[88vh] max-w-4xl bg-white/95 backdrop-blur-md md:rounded-3xl shadow-2xl overflow-hidden relative border-0 md:border-4 border-amber-200 flex flex-col">
+        
+        <!-- Top Game Header (Shows current progress during challenge) -->
+        <header id="game-header" class="bg-amber-500 text-white p-3 text-center hidden transition-all duration-300 shadow-md z-20">
+            <h1 class="text-lg font-black tracking-wider flex items-center justify-center gap-2">
+                <i class="fa-solid fa-box-open"></i> 安得烈裝箱任務
+            </h1>
+            <div class="flex justify-center mt-1.5 space-x-3 text-sm">
+                <span id="dot-1" class="w-3 h-3 rounded-full bg-white opacity-40 transition-all"></span>
+                <span id="dot-2" class="w-3 h-3 rounded-full bg-white opacity-40 transition-all"></span>
+                <span id="dot-3" class="w-3 h-3 rounded-full bg-white opacity-40 transition-all"></span>
+            </div>
+            <div id="player-info-display" class="absolute top-2.5 right-4 text-xs bg-amber-600 px-3 py-1 rounded-full font-bold shadow-inner hidden"></div>
+        </header>
+
+        <!-- ==================== 1. 角色選擇畫面 ==================== -->
+        <section id="screen-role-select" class="screen active flex-col items-center justify-center flex-1 p-6 text-center h-full">
+            <div class="text-6xl text-amber-500 mb-4 drop-shadow-md animate-bounce"><i class="fa-solid fa-hand-holding-heart"></i></div>
+            <h1 class="text-3xl md:text-5xl font-black text-gray-800 mb-2 tracking-wide">
+                安得烈膳糧食物箱
+            </h1>
+            <h2 class="text-xl md:text-2xl font-bold text-amber-600 mb-6">愛心裝箱任務 (多人連線版)</h2>
+            <p class="text-gray-600 mb-8 leading-relaxed max-w-md text-sm md:text-base">
+                歡迎參與！現場活動建議使用一台電腦設定為「大螢幕主機」，玩家用手機掃描 QR Code 即可化身裝箱志工挑戰速拼！
+            </p>
+            <div class="flex flex-col md:flex-row gap-4 w-full max-w-md">
+                <button onclick="selectRole('host')" class="flex-1 btn-interactive bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 px-6 rounded-2xl flex flex-col items-center justify-center gap-2">
+                    <i class="fa-solid fa-tv text-3xl text-amber-400"></i>
+                    <span>我是大螢幕主機</span>
+                </button>
+                <button onclick="selectRole('player')" class="flex-1 btn-interactive bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-2xl flex flex-col items-center justify-center gap-2">
+                    <i class="fa-solid fa-mobile-screen-button text-3xl"></i>
+                    <span>我要手機闖關</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 2. 大螢幕主機畫面 ==================== -->
+        <section id="screen-host" class="screen flex-col flex-1 p-6 h-full bg-slate-50">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-black text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-trophy text-amber-500"></i> 愛心裝箱即時排行榜
+                </h2>
+                <span class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold animate-pulse flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 連線中
+                </span>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-6 h-full flex-1 min-h-0">
+                <!-- 左側：QR Code 掃描區 -->
+                <div class="w-full md:w-1/3 bg-white rounded-2xl shadow-sm border-2 border-slate-100 p-5 flex flex-col items-center justify-between text-center">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-700 mb-2">手機掃碼加入任務</h3>
+                        <div id="qr-code-container" class="bg-white p-2.5 rounded-xl shadow-inner border-2 border-dashed border-amber-300 mb-3 w-44 h-44 flex items-center justify-center mx-auto">
+                            <!-- Canvas QR Code will be generated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="w-full space-y-2">
+                        <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
+                            <input id="host-player-url" readonly type="text" class="w-full bg-transparent text-[11px] font-mono text-slate-600 outline-none px-1 truncate" />
+                            <button onclick="copyHostUrl()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded shadow-sm whitespace-nowrap">
+                                複製
+                            </button>
+                        </div>
+                        <p class="text-[11px] text-slate-500 font-medium bg-amber-50 p-2 rounded-lg text-amber-800">
+                            掃碼即可進入挑戰，完成後成績將即時播報至此畫面！
+                        </p>
+                        <button onclick="location.reload()" class="text-slate-400 hover:text-slate-600 text-xs underline">重置 / 返回角色選擇</button>
+                    </div>
+                </div>
+                
+                <!-- 右側：即時排行榜 -->
+                <div class="w-full md:w-2/3 bg-white rounded-2xl shadow-sm border-2 border-amber-100 flex flex-col overflow-hidden">
+                    <div class="bg-amber-50 p-3 border-b-2 border-amber-100 grid grid-cols-12 gap-2 text-xs font-bold text-amber-900">
+                        <div class="col-span-2 text-center">名次</div>
+                        <div class="col-span-6">志工暱稱</div>
+                        <div class="col-span-4 text-right pr-4">闖關總耗時</div>
+                    </div>
+                    <div id="leaderboard-list" class="flex-1 overflow-y-auto p-4 space-y-2.5">
+                        <div class="flex flex-col items-center justify-center h-full text-slate-400 space-y-2 py-12">
+                            <i class="fa-solid fa-inbox text-4xl opacity-40"></i>
+                            <p class="text-sm">等待玩家完成裝箱任務...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 3. 玩家登入畫面 ==================== -->
+        <section id="screen-player-login" class="screen flex-col items-center justify-center flex-1 p-6 text-center h-full">
+            <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mb-5 shadow-inner text-4xl text-amber-600">
+                📦
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">準備好開始裝箱挑戰了嗎？</h2>
+            <p class="text-slate-500 mb-6 text-xs md:text-sm">請輸入暱稱，完成後的成績將即時上傳至現場大螢幕！</p>
+            
+            <div class="w-full max-w-sm">
+                <input type="text" id="player-name-input" placeholder="請輸入志工暱稱 (例: 小安)" class="w-full px-6 py-3.5 rounded-full border-2 border-slate-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 outline-none text-base font-medium text-center transition-all bg-white shadow-sm mb-5">
+                <button onclick="startChallenge()" class="btn-interactive w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-8 rounded-full text-lg flex items-center justify-center gap-2">
+                    開始愛心任務 <i class="fa-solid fa-bolt"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 4. 關卡 1：第一道門 ==================== -->
+        <section id="screen-level-1" class="screen flex-col items-center flex-1 p-4 md:p-6 h-full bg-slate-50 justify-between">
+            <div class="text-center">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">第一道門：物資特質</h2>
+                <p class="text-slate-500 text-xs">選擇正確的特質，開啟第一道門！</p>
+            </div>
+
+            <!-- 3D 門 UI -->
+            <div class="door-frame relative w-40 h-48 md:w-44 md:h-52 mx-auto bg-slate-900 rounded-t-2xl overflow-hidden border-4 border-amber-900 shadow-xl my-2 flex-shrink-0">
+                <div class="absolute inset-0 bg-amber-200 opacity-0 transition-opacity duration-1000 flex items-center justify-center text-4xl" id="light-1">✨</div>
+                
+                <div id="door-1-left" class="door-panel door-left absolute inset-y-0 left-0 w-1/2 bg-amber-800 border-r-2 border-amber-950 flex items-center justify-end pr-1.5">
+                    <div class="w-2.5 h-7 bg-amber-600 rounded-sm shadow-sm"></div>
+                </div>
+                <div id="door-1-right" class="door-panel door-right absolute inset-y-0 right-0 w-1/2 bg-amber-800 border-l-2 border-amber-950 flex items-center justify-start pl-1.5">
+                    <div class="w-2.5 h-7 bg-amber-600 rounded-sm shadow-sm"></div>
+                </div>
+                <div class="absolute top-2 w-full text-center text-amber-300/60 font-black text-[10px] tracking-[0.2em]">DOOR 01</div>
+            </div>
+
+            <div class="w-full max-w-md bg-white p-5 rounded-2xl border-2 border-slate-200 shadow-sm mb-2" id="qbox-1">
+                <p class="text-base font-bold text-slate-800 mb-4 leading-relaxed">
+                    <i class="fa-solid fa-circle-question text-amber-500 mr-2"></i>請問安得烈食物銀行的食物箱是放甚麼樣的食物？
+                </p>
+                <div class="space-y-2.5">
+                    <button onclick="checkAnswer(1, 1, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50 text-slate-700 font-bold bg-white text-sm">
+                        1. 常溫可保存
+                    </button>
+                    <button onclick="checkAnswer(1, 2, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50 text-slate-700 font-bold bg-white text-sm">
+                        2. 冷藏冷凍的食物
+                    </button>
+                    <button onclick="checkAnswer(1, 3, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50 text-slate-700 font-bold bg-white text-sm">
+                        3. 生鮮或煮過的食物
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 5. 關卡 2：第二道門 ==================== -->
+        <section id="screen-level-2" class="screen flex-col items-center flex-1 p-4 md:p-6 h-full bg-blue-50/50 justify-between">
+            <div class="text-center">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">第二道門：核心計畫</h2>
+                <p class="text-slate-500 text-xs">了解安得烈的精神，開啟第二道門！</p>
+            </div>
+
+            <div class="door-frame relative w-40 h-48 md:w-44 md:h-52 mx-auto bg-slate-900 rounded-t-2xl overflow-hidden border-4 border-slate-700 shadow-xl my-2 flex-shrink-0">
+                <div class="absolute inset-0 bg-blue-200 opacity-0 transition-opacity duration-1000 flex items-center justify-center text-4xl" id="light-2">💡</div>
+                
+                <div id="door-2-left" class="door-panel door-left absolute inset-y-0 left-0 w-1/2 bg-slate-600 border-r-2 border-slate-800 flex items-center justify-end pr-1.5">
+                    <div class="w-3 h-3 rounded-full bg-slate-400 shadow-sm"></div>
+                </div>
+                <div id="door-2-right" class="door-panel door-right absolute inset-y-0 right-0 w-1/2 bg-slate-600 border-l-2 border-slate-800 flex items-center justify-start pl-1.5">
+                    <div class="w-3 h-3 rounded-full bg-slate-400 shadow-sm"></div>
+                </div>
+                <div class="absolute top-2 w-full text-center text-slate-300/60 font-black text-[10px] tracking-[0.2em]">DOOR 02</div>
+            </div>
+
+            <div class="w-full max-w-md bg-white p-5 rounded-2xl border-2 border-blue-100 shadow-sm mb-2" id="qbox-2">
+                <p class="text-base font-bold text-slate-800 mb-4 leading-relaxed">
+                    <i class="fa-solid fa-circle-question text-blue-500 mr-2"></i>安得烈的一日捐計畫又稱為什麼計畫？
+                </p>
+                <div class="space-y-2.5">
+                    <button onclick="checkAnswer(2, 1, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 font-bold bg-white text-sm">
+                        1. 善果計畫
+                    </button>
+                    <button onclick="checkAnswer(2, 2, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 font-bold bg-white text-sm">
+                        2. 永續計畫
+                    </button>
+                    <button onclick="checkAnswer(2, 3, 1)" class="btn-interactive w-full text-left p-3.5 rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 font-bold bg-white text-sm">
+                        3. 神聖計畫
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 6. 關卡 3：第三道門 (單一物資即時歸納遊戲) ==================== -->
+        <section id="screen-level-3" class="screen flex-col items-center flex-1 p-3 md:p-5 h-full bg-amber-50/40 justify-between overflow-hidden">
+            <!-- 頂部計時器與進度統計 -->
+            <div class="w-full max-w-xl flex justify-between items-center bg-white px-4 py-2 rounded-xl border border-amber-200 shadow-sm">
+                <div>
+                    <h2 class="text-base font-black text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-boxes-packing text-amber-500"></i> 第三道門：速拼物資歸納
+                    </h2>
+                    <p class="text-[11px] text-slate-500">請看清中央出現的物資，直接點擊正確歸納區！</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">歸納進度</div>
+                        <div class="text-base font-black text-amber-600"><span id="sorted-count">0</span> / <span id="total-items-count">16</span></div>
+                    </div>
+                    <div class="bg-red-50 border border-red-200 px-3 py-1 rounded-lg text-center">
+                        <div class="text-[9px] font-bold text-red-500 uppercase"><i class="fa-regular fa-clock mr-0.5"></i>限時</div>
+                        <div class="text-lg font-black text-red-600 font-mono leading-none" id="timer-text">60</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 時間進度條 -->
+            <div class="w-full max-w-xl h-1.5 bg-slate-200 rounded-full my-1.5 overflow-hidden">
+                <div id="timer-bar" class="h-full bg-emerald-500 transition-all duration-1000 ease-linear" style="width: 100%;"></div>
+            </div>
+
+            <!-- 當前出現的單一物資展示區 (Conveyor Spotlight) -->
+            <div class="w-full max-w-md bg-white rounded-2xl border-4 border-amber-300 p-4 shadow-lg flex flex-col items-center justify-center my-1 relative overflow-hidden">
+                <div class="absolute top-2 left-3 text-[10px] font-black text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                    當前物資 (<span id="current-item-index">1</span>/16)
+                </div>
+                
+                <div id="conveyor-card-container" class="my-3 text-center min-h-[110px] flex flex-col items-center justify-center">
+                    <!-- Dynamic active item rendered here -->
+                </div>
+            </div>
+
+            <!-- 三大歸納直接點擊選擇區 (Target Sorting Buttons) -->
+            <div class="w-full max-w-md flex flex-col gap-2.5 my-1">
+                <button onclick="sortCurrentItemToZone('box')" class="btn-interactive w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black py-3.5 px-4 rounded-xl flex items-center justify-between shadow-md border-b-4 border-amber-800 text-sm md:text-base">
+                    <span class="flex items-center gap-2">
+                        <span class="text-2xl">📦</span>
+                        <span>安得烈膳糧食物箱</span>
+                    </span>
+                    <span class="text-xs bg-amber-700/80 px-2 py-1 rounded font-normal text-amber-100">常溫可久存</span>
+                </button>
+
+                <div class="grid grid-cols-2 gap-2.5">
+                    <button onclick="sortCurrentItemToZone('cold')" class="btn-interactive bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white font-bold py-3 px-3 rounded-xl flex flex-col items-center justify-center shadow-md border-b-4 border-cyan-800 text-xs text-center">
+                        <span class="text-xl mb-0.5">🧊</span>
+                        <span>冷藏冷凍區</span>
+                        <span class="text-[10px] opacity-80 font-normal">不宜入箱 (易融化)</span>
+                    </button>
+
+                    <button onclick="sortCurrentItemToZone('fresh')" class="btn-interactive bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-3 px-3 rounded-xl flex flex-col items-center justify-center shadow-md border-b-4 border-emerald-800 text-xs text-center">
+                        <span class="text-xl mb-0.5">🥗</span>
+                        <span>生鮮熟食區</span>
+                        <span class="text-[10px] opacity-80 font-normal">不宜入箱 (易腐壞)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 已成功歸納提示列 -->
+            <div class="w-full max-w-md bg-slate-100/80 rounded-xl p-2 border border-slate-200 text-center">
+                <div class="text-[10px] font-bold text-slate-500 mb-1">最近歸納完成物資</div>
+                <div id="sorted-history" class="flex justify-center gap-1.5 overflow-x-auto min-h-[24px]">
+                    <span class="text-xs text-slate-400 italic">等待點擊分類...</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 7. 勝利畫面 (物流門升起配送) ==================== -->
+        <section id="screen-win" class="screen flex-col items-center justify-between flex-1 relative overflow-hidden bg-sky-50 pt-8">
+            <div class="absolute inset-0 pointer-events-none opacity-40">
+                <div class="absolute top-10 left-10 text-2xl animate-bounce">🎉</div>
+                <div class="absolute top-20 right-10 text-2xl animate-bounce" style="animation-delay: 0.2s">🎊</div>
+                <div class="absolute top-40 left-1/4 text-2xl animate-bounce" style="animation-delay: 0.4s">✨</div>
+            </div>
+            
+            <div class="text-center z-10 px-6 max-w-md w-full">
+                <div class="inline-block bg-white p-3.5 rounded-full shadow-lg mb-3">
+                    <i class="fa-solid fa-circle-check text-4xl text-emerald-500"></i>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-black text-amber-600 mb-2 tracking-wide">
+                    📦 愛心裝箱完成！
+                </h1>
+                <div class="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-md border border-white mb-4">
+                    <p class="text-slate-700 text-sm leading-relaxed font-medium">
+                        太棒了，<span id="win-player-name" class="text-amber-600 font-bold"></span>！<br>
+                        您共花費 <span id="win-time" class="text-red-500 font-black text-lg"></span> 秒完成物資裝箱。<br>
+                        正確的安得烈膳糧食物箱已準備就緒，出發配送！
+                    </p>
+                </div>
+            </div>
+
+            <!-- 物流捲門與卡車動畫場景 -->
+            <div class="w-full h-44 md:h-56 bg-slate-800 flex items-end justify-center z-0 border-t-8 border-slate-900 relative mt-auto">
+                <div class="w-full h-full bg-slate-700 relative overflow-hidden flex items-end">
+                    <!-- 配送卡車 -->
+                    <div class="absolute bottom-2 left-0 text-6xl md:text-7xl truck-drive z-0">
+                        🚛
+                        <span class="text-[10px] absolute top-1 right-1 bg-white rounded border border-amber-500 px-1 font-bold text-amber-600">安得烈物資車</span>
+                    </div>
+
+                    <!-- 物流捲門 (通關後向上升起) -->
+                    <div id="logistics-roller" class="logistics-door absolute top-0 left-0 w-full h-full bg-slate-400 z-10 border-b-8 border-amber-500 flex flex-col justify-end shadow-[inset_0_-10px_20px_rgba(0,0,0,0.3)]">
+                        <div class="w-full h-full flex flex-col justify-between opacity-20 pointer-events-none">
+                            <div class="w-full h-px bg-black mt-2"></div><div class="w-full h-px bg-black mt-2"></div>
+                            <div class="w-full h-px bg-black mt-2"></div><div class="w-full h-px bg-black mt-2"></div>
+                            <div class="w-full h-px bg-black mt-2"></div><div class="w-full h-px bg-black mt-2"></div>
+                        </div>
+                        <div class="text-center pb-2 text-slate-800 font-black text-lg tracking-[0.5em] opacity-40">LOGISTICS GATE</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 自訂提示 Modal -->
+        <div id="custom-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+            <div class="bg-white rounded-3xl p-6 max-w-sm w-[85%] text-center shadow-2xl transform scale-95 transition-transform duration-300" id="modal-content">
+                <div id="modal-icon" class="text-5xl mb-3"></div>
+                <h3 id="modal-title" class="text-lg font-bold text-slate-800 mb-2">提示</h3>
+                <p id="modal-desc" class="text-slate-600 mb-5 text-xs font-medium leading-relaxed"></p>
+                <button onclick="closeModal()" class="btn-interactive bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-8 rounded-full w-full text-sm">
+                    我知道了
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Firebase Module Imports & Game Core Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Sound Synthesis (Tone.js)
+        window.soundFX = {
+            click: () => {
+                try {
+                    const synth = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination();
+                    synth.triggerAttackRelease("C6", "8n");
+                } catch(e){}
+            },
+            correct: () => {
+                try {
+                    const synth = new Tone.PolySynth().toDestination();
+                    synth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
+                } catch(e){}
+            },
+            wrong: () => {
+                try {
+                    const synth = new Tone.Synth({ oscillator: { type: 'sawtooth' } }).toDestination();
+                    synth.triggerAttackRelease("A3", "8n");
+                } catch(e){}
+            },
+            win: () => {
+                try {
+                    const synth = new Tone.PolySynth().toDestination();
+                    synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n");
+                } catch(e){}
+            }
+        };
+
+        // Global State Configuration
+        window.gameState = {
+            role: null, // 'host' or 'player'
+            playerName: "",
+            currentLevel: 0,
+            startTime: 0,
+            timerInterval: null,
+            level3TimeLeft: 60,
+            currentItemIndex: 0,
+            sortedCount: 0,
+            activeQueue: [],
+            items: [
+                // 常溫可保存物資 (Correct Zone: 'box')
+                { id: 1, name: '白米', icon: '🌾', zone: 'box' },
+                { id: 2, name: '麵條', icon: '🍜', zone: 'box' },
+                { id: 3, name: '調理包', icon: '🍲', zone: 'box' },
+                { id: 4, name: '保久乳', icon: '🥛', zone: 'box' },
+                { id: 5, name: '沖泡麥片盒', icon: '🥣', zone: 'box' },
+                { id: 6, name: '肉鬆', icon: '🥩', zone: 'box' },
+                { id: 7, name: '沖泡飲品袋', icon: '☕', zone: 'box' },
+                { id: 8, name: '營養罐頭', icon: '🥫', zone: 'box' },
+                
+                // 冷藏及冷凍物資 (Zone: 'cold')
+                { id: 9, name: '冰塊', icon: '🧊', zone: 'cold' },
+                { id: 10, name: '冰淇淋', icon: '🍦', zone: 'cold' },
+                { id: 11, name: '冰咖啡', icon: '🧋', zone: 'cold' },
+                { id: 12, name: '微波便當', icon: '🍱', zone: 'cold' },
+                { id: 13, name: '冷凍鮮肉', icon: '❄️', zone: 'cold' },
+
+                // 生鮮或煮熟物資 (Zone: 'fresh')
+                { id: 14, name: '熱騰騰白飯', icon: '🍚', zone: 'fresh' },
+                { id: 15, name: '現煮舒肥雞肉', icon: '🍗', zone: 'fresh' },
+                { id: 16, name: '現烤吐司麵包', icon: '🍞', zone: 'fresh' }
+            ],
+            appId: typeof __app_id !== 'undefined' ? __app_id : 'demo-andrei-foodbox',
+            db: null,
+            auth: null
+        };
+
+        // Firebase Setup
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            projectId: "demo-andrei"
+        };
+        
+        try {
+            const app = initializeApp(firebaseConfig);
+            window.gameState.db = getFirestore(app);
+            window.gameState.auth = getAuth(app);
+            
+            window.authenticate = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(window.gameState.auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(window.gameState.auth);
+                    }
+                    return true;
+                } catch (error) {
+                    console.error("Auth error:", error);
+                    return false;
+                }
+            };
+        } catch (e) {
+            console.error("Firebase init failed", e);
+        }
+
+        // Firestore Leaderboard Operations
+        window.saveScoreToDB = async (name, timeTaken) => {
+            if (!window.gameState.auth?.currentUser) return;
+            try {
+                const colRef = collection(window.gameState.db, 'artifacts', window.gameState.appId, 'public', 'data', 'leaderboard');
+                await addDoc(colRef, {
+                    name: name,
+                    timeTaken: timeTaken,
+                    timestamp: Date.now()
+                });
+            } catch (e) {
+                console.error("Error saving score: ", e);
+            }
+        };
+
+        window.startLeaderboardListener = () => {
+            if (!window.gameState.auth?.currentUser) return;
+            const colRef = collection(window.gameState.db, 'artifacts', window.gameState.appId, 'public', 'data', 'leaderboard');
+            
+            onSnapshot(colRef, (snapshot) => {
+                const results = [];
+                snapshot.forEach((doc) => {
+                    results.push({ id: doc.id, ...doc.data() });
+                });
+                
+                results.sort((a, b) => {
+                    if (a.timeTaken === b.timeTaken) return a.timestamp - b.timestamp;
+                    return a.timeTaken - b.timeTaken;
+                });
+                
+                renderLeaderboard(results);
+            }, (err) => console.error(err));
+        };
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('role') === 'player') {
+                selectRole('player');
+            }
+        });
+
+        function hideAllScreens() {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+        }
+
+        async function selectRole(role) {
+            window.gameState.role = role;
+            hideAllScreens();
+
+            if (window.authenticate) {
+                await window.authenticate();
+            }
+
+            if (role === 'host') {
+                document.getElementById('screen-host').classList.add('active');
+                setupHost();
+            } else if (role === 'player') {
+                document.getElementById('screen-player-login').classList.add('active');
+            }
+        }
+
+        // Host setup with local QRCode.js rendering
+        function setupHost() {
+            const baseUrl = window.location.href.split('?')[0];
+            const playerUrl = `${baseUrl}?role=player`;
+            
+            const qrContainer = document.getElementById('qr-code-container');
+            qrContainer.innerHTML = '';
+
+            try {
+                new QRCode(qrContainer, {
+                    text: playerUrl,
+                    width: 160,
+                    height: 160,
+                    colorDark: "#d97706",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (err) {
+                qrContainer.innerHTML = `<div class="text-xs text-slate-400">QR 碼生成失敗，請使用右側連結</div>`;
+            }
+
+            const urlInput = document.getElementById('host-player-url');
+            if (urlInput) urlInput.value = playerUrl;
+
+            if (window.startLeaderboardListener) {
+                window.startLeaderboardListener();
+            }
+        }
+
+        function copyHostUrl() {
+            const urlInput = document.getElementById('host-player-url');
+            if (urlInput) {
+                urlInput.select();
+                document.execCommand('copy');
+                showModal("已複製連結", "手機闖關網址已複製至剪貼簿！", "warning");
+            }
+        }
+
+        function renderLeaderboard(data) {
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = '';
+
+            if (data.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-slate-400 space-y-2 py-10">
+                        <i class="fa-solid fa-inbox text-4xl opacity-40"></i>
+                        <p class="text-sm">尚無玩家完成挑戰，等待中...</p>
+                    </div>`;
+                return;
+            }
+
+            data.forEach((entry, index) => {
+                const isTop3 = index < 3;
+                let rankIcon = `<span class="font-bold text-slate-500 text-sm">${index + 1}</span>`;
+                if (index === 0) rankIcon = `<i class="fa-solid fa-trophy text-amber-500 text-base"></i>`;
+                if (index === 1) rankIcon = `<i class="fa-solid fa-medal text-slate-400 text-base"></i>`;
+                if (index === 2) rankIcon = `<i class="fa-solid fa-medal text-amber-700 text-base"></i>`;
+
+                const bgClass = isTop3 ? 'bg-amber-50/60 border-l-4 border-amber-500 shadow-sm' : 'bg-slate-50 border-l-4 border-transparent';
+                
+                const itemHtml = `
+                    <div class="leaderboard-item ${bgClass} rounded-xl p-2.5 flex items-center grid grid-cols-12 gap-2" style="animation-delay: ${index * 0.04}s">
+                        <div class="col-span-2 text-center flex justify-center items-center">${rankIcon}</div>
+                        <div class="col-span-6 font-bold text-slate-800 text-sm truncate">${escapeHTML(entry.name)}</div>
+                        <div class="col-span-4 text-right font-mono text-red-500 font-bold pr-2 text-sm">${entry.timeTaken.toFixed(1)}s</div>
+                    </div>
+                `;
+                list.innerHTML += itemHtml;
+            });
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
+        }
+
+        // Player Challenge Start
+        function startChallenge() {
+            const nameInput = document.getElementById('player-name-input').value.trim();
+            if (!nameInput) {
+                showModal("提示", "請輸入暱稱才能登錄大螢幕排行榜喔！", "warning");
+                return;
+            }
+            
+            window.gameState.playerName = nameInput;
+            document.getElementById('player-info-display').innerText = nameInput;
+            document.getElementById('player-info-display').classList.remove('hidden');
+            
+            window.gameState.startTime = Date.now();
+            hideAllScreens();
+            window.gameState.currentLevel = 1;
+            document.getElementById('screen-level-1').classList.add('active');
+            updateProgress(1);
+        }
+
+        function updateProgress(level) {
+            document.getElementById('game-header').classList.remove('hidden');
+            for(let i=1; i<=3; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                if(i <= level) {
+                    dot.classList.remove('opacity-40');
+                    dot.classList.add('opacity-100', 'bg-white');
+                }
+            }
+        }
+
+        // Door 1 & Door 2 Check
+        function checkAnswer(level, selectedOption, correctOption) {
+            if(window.soundFX) window.soundFX.click();
+            const qBox = document.getElementById(`qbox-${level}`);
+            
+            if (selectedOption === correctOption) {
+                if(window.soundFX) window.soundFX.correct();
+                openDoor(level);
+            } else {
+                if(window.soundFX) window.soundFX.wrong();
+                qBox.classList.add('shake');
+                setTimeout(() => qBox.classList.remove('shake'), 500);
+                
+                let errorMsg = "請再想想看喔！";
+                if(level === 1) errorMsg = "為了確保食物在運送和存放過程中不腐壞，膳糧食物箱放置「常溫可保存」的乾糧物資！";
+                if(level === 2) errorMsg = "安得烈推動養成品格與分享愛心的一日捐活動，稱為「善果計畫」喔！";
+                
+                showModal("答錯了！", errorMsg, "error");
+            }
+        }
+
+        function openDoor(level) {
+            const btns = document.querySelectorAll(`#screen-level-${level} button`);
+            btns.forEach(btn => btn.disabled = true);
+
+            document.getElementById(`door-${level}-left`).classList.add('open');
+            document.getElementById(`door-${level}-right`).classList.add('open');
+            document.getElementById(`light-${level}`).style.opacity = '1';
+
+            setTimeout(() => {
+                hideAllScreens();
+                if(level === 1) {
+                    window.gameState.currentLevel = 2;
+                    document.getElementById('screen-level-2').classList.add('active');
+                    updateProgress(2);
+                } else if (level === 2) {
+                    window.gameState.currentLevel = 3;
+                    document.getElementById('screen-level-3').classList.add('active');
+                    updateProgress(3);
+                    initLevel3ConveyorGame();
+                }
+            }, 1200);
+        }
+
+        // ==================== LEVEL 3: SINGLE ITEM CONVEYOR GAME LOGIC ====================
+        function initLevel3ConveyorGame() {
+            window.gameState.sortedCount = 0;
+            window.gameState.currentItemIndex = 0;
+            
+            // Randomize item order for fresh replayability
+            window.gameState.activeQueue = [...window.gameState.items].sort(() => Math.random() - 0.5);
+            
+            document.getElementById('sorted-count').innerText = "0";
+            document.getElementById('total-items-count').innerText = window.gameState.items.length;
+            document.getElementById('sorted-history').innerHTML = '<span class="text-xs text-slate-400 italic">等待點擊分類...</span>';
+
+            renderCurrentSpotlightItem();
+            startLevel3Timer();
+        }
+
+        function renderCurrentSpotlightItem() {
+            const item = window.gameState.activeQueue[window.gameState.currentItemIndex];
+            if (!item) return;
+
+            document.getElementById('current-item-index').innerText = window.gameState.currentItemIndex + 1;
+
+            const container = document.getElementById('conveyor-card-container');
+            container.innerHTML = `
+                <div class="item-conveyor-card flex flex-col items-center">
+                    <div class="text-6xl md:text-7xl mb-1 filter drop-shadow-md animate-bounce">${item.icon}</div>
+                    <div class="text-xl md:text-2xl font-black text-slate-800 tracking-wide">${item.name}</div>
+                </div>
+            `;
+        }
+
+        function sortCurrentItemToZone(chosenZone) {
+            const currentItem = window.gameState.activeQueue[window.gameState.currentItemIndex];
+            if (!currentItem) return;
+
+            if (currentItem.zone === chosenZone) {
+                // Correct Choice!
+                if(window.soundFX) window.soundFX.correct();
+
+                // Append to history log
+                addHistoryBadge(currentItem);
+
+                window.gameState.sortedCount++;
+                document.getElementById('sorted-count').innerText = window.gameState.sortedCount;
+
+                window.gameState.currentItemIndex++;
+
+                // Check Win Condition
+                if (window.gameState.currentItemIndex >= window.gameState.activeQueue.length) {
+                    clearInterval(window.gameState.timerInterval);
+                    if(window.soundFX) window.soundFX.win();
+                    setTimeout(triggerWin, 300);
+                } else {
+                    // Load next item immediately!
+                    renderCurrentSpotlightItem();
+                }
+            } else {
+                // Wrong Choice!
+                if(window.soundFX) window.soundFX.wrong();
+
+                let explanation = "這項物資不屬於這個區域喔！";
+                if(currentItem.zone === 'box') explanation = `「${currentItem.name}」屬於常溫乾糧物資，正是膳糧食物箱主要採購發放的品項！`;
+                if(currentItem.zone === 'cold') explanation = `「${currentItem.name}」需要冷藏冷凍存放，放入普通食物箱會融化或變質！`;
+                if(currentItem.zone === 'fresh') explanation = `「${currentItem.name}」屬於熟食生鮮，無法長期久放，不宜放入膳糧食物箱！`;
+
+                showModal("歸納錯誤！", explanation, "error");
+            }
+        }
+
+        function addHistoryBadge(item) {
+            const historyContainer = document.getElementById('sorted-history');
+            if (window.gameState.sortedCount === 0) {
+                historyContainer.innerHTML = '';
+            }
+
+            const badge = document.createElement('span');
+            badge.className = "bg-white border border-slate-300 text-slate-800 rounded-md px-2 py-0.5 text-xs font-bold shadow-2xs flex items-center gap-1 flex-shrink-0 animate-bounce";
+            badge.innerHTML = `${item.icon} ${item.name}`;
+            
+            historyContainer.prepend(badge);
+
+            // Keep max 5 badges visible
+            if (historyContainer.children.length > 5) {
+                historyContainer.removeChild(historyContainer.lastChild);
+            }
+        }
+
+        // Level 3 Timer Control
+        function startLevel3Timer() {
+            window.gameState.level3TimeLeft = 60;
+            const timerText = document.getElementById('timer-text');
+            const timerBar = document.getElementById('timer-bar');
+            
+            timerText.innerText = window.gameState.level3TimeLeft;
+            timerBar.style.width = '100%';
+
+            if (window.gameState.timerInterval) clearInterval(window.gameState.timerInterval);
+
+            window.gameState.timerInterval = setInterval(() => {
+                window.gameState.level3TimeLeft--;
+                timerText.innerText = window.gameState.level3TimeLeft;
+                
+                const percentage = (window.gameState.level3TimeLeft / 60) * 100;
+                timerBar.style.width = `${percentage}%`;
+
+                if (window.gameState.level3TimeLeft <= 15) {
+                    timerBar.className = 'h-full bg-red-500 transition-all duration-1000 ease-linear';
+                    timerText.classList.add('animate-pulse');
+                }
+
+                if (window.gameState.level3TimeLeft <= 0) {
+                    clearInterval(window.gameState.timerInterval);
+                    showModal("時間到！", "限時 1 分鐘已結束，未能及時完成歸納。請再試一次！", "timeout");
+                }
+            }, 1000);
+        }
+
+        // Trigger Win & Save Score
+        function triggerWin() {
+            const totalTimeTaken = (Date.now() - window.gameState.startTime) / 1000;
+            
+            document.getElementById('game-header').classList.add('hidden');
+            hideAllScreens();
+            document.getElementById('screen-win').classList.add('active');
+            
+            document.getElementById('win-player-name').innerText = window.gameState.playerName;
+            document.getElementById('win-time').innerText = totalTimeTaken.toFixed(1);
+
+            // Save to Firebase Leaderboard
+            if (window.saveScoreToDB) {
+                window.saveScoreToDB(window.gameState.playerName, totalTimeTaken);
+            }
+
+            // Animate Logistics Roll-up Door
+            setTimeout(() => {
+                const roller = document.getElementById('logistics-roller');
+                if(roller) roller.classList.add('open');
+            }, 500);
+        }
+
+        // Modal Helpers
+        function showModal(title, msg, type) {
+            const modal = document.getElementById('custom-modal');
+            const content = document.getElementById('modal-content');
+            const icon = document.getElementById('modal-icon');
+            
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-desc').innerText = msg;
+            
+            if(type === 'error') {
+                icon.innerHTML = '<i class="fa-regular fa-face-frown text-red-500"></i>';
+            } else if (type === 'timeout') {
+                icon.innerHTML = '<i class="fa-solid fa-hourglass-end text-red-500 animate-pulse"></i>';
+            } else if (type === 'warning') {
+                icon.innerHTML = '<i class="fa-solid fa-circle-exclamation text-amber-500"></i>';
+            }
+
+            modal.classList.remove('hidden');
+            void modal.offsetWidth;
+            modal.classList.remove('opacity-0');
+            content.classList.remove('scale-95');
+            content.classList.add('scale-100');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('custom-modal');
+            const content = document.getElementById('modal-content');
+            
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                // Timeout Retry
+                if (window.gameState.level3TimeLeft <= 0 && window.gameState.currentLevel === 3) {
+                    initLevel3ConveyorGame();
+                }
+            }, 300);
+        }
+    </script>
+</body>
+</html>
